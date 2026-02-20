@@ -1,7 +1,7 @@
 #region "copyright"
 
 /*
-    Copyright © 2016 - 2026 Stefan Berg <isbeorn86+NINA@googlemail.com> and the N.I.N.A. contributors
+    Copyright Â© 2016 - 2026 Stefan Berg <isbeorn86+NINA@googlemail.com> and the N.I.N.A. contributors
 
     This file is part of N.I.N.A. - Nighttime Imaging 'N' Astronomy.
 
@@ -39,6 +39,7 @@ namespace NINA.Profile.Interfaces {
         string ASTAPLocation { get; set; }
         int DownSampleFactor { get; set; }
         int MaxObjects { get; set; }
+        string CameraId { get; set; }
         bool Sync { get; set; }
         bool SlewToTarget { get; set; }
         bool BlindFailoverEnabled { get; set; }

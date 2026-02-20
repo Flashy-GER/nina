@@ -52,6 +52,7 @@ namespace NINA.Profile {
             filter = null;
             downSampleFactor = 0;
             maxObjects = 500;
+            cameraId = string.Empty;
             gain = -1;
             binning = 1;
             sync = false;
@@ -313,6 +314,19 @@ namespace NINA.Profile {
             set {
                 if (downSampleFactor != value) {
                     downSampleFactor = value;
+                    RaisePropertyChanged();
+                }
+            }
+        }
+
+        private string cameraId;
+
+        [DataMember]
+        public string CameraId {
+            get => cameraId;
+            set {
+                if (cameraId != value) {
+                    cameraId = value;
                     RaisePropertyChanged();
                 }
             }

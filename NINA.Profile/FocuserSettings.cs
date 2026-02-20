@@ -38,6 +38,7 @@ namespace NINA.Profile {
             autoFocusDisableGuiding = false;
             focuserSettleTime = 0;
             autoFocusMethod = AFMethodEnum.STARHFR;
+            autoFocusCameraId = string.Empty;
             autoFocusTotalNumberOfAttempts = 1;
             autoFocusNumberOfFramesPerPoint = 1;
             autoFocusInnerCropRatio = 1;
@@ -130,6 +131,19 @@ namespace NINA.Profile {
             set {
                 if (autoFocusExposureTime != value) {
                     autoFocusExposureTime = value;
+                    RaisePropertyChanged();
+                }
+            }
+        }
+
+        private string autoFocusCameraId;
+
+        [DataMember]
+        public string AutoFocusCameraId {
+            get => autoFocusCameraId;
+            set {
+                if (autoFocusCameraId != value) {
+                    autoFocusCameraId = value;
                     RaisePropertyChanged();
                 }
             }

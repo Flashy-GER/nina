@@ -42,6 +42,7 @@ namespace NINA.Profile {
             noiseReduction = NoiseReductionEnum.None;
             detectStars = true;
             autoStretch = true;
+            imagingCameraId = string.Empty;
         }
 
         private double autoStretchFactor;
@@ -203,6 +204,19 @@ namespace NINA.Profile {
             set {
                 if (sharpCapSensorAnalysisFolder != value) {
                     sharpCapSensorAnalysisFolder = value;
+                    RaisePropertyChanged();
+                }
+            }
+        }
+
+        private string imagingCameraId;
+
+        [DataMember]
+        public string ImagingCameraId {
+            get => imagingCameraId;
+            set {
+                if (imagingCameraId != value) {
+                    imagingCameraId = value;
                     RaisePropertyChanged();
                 }
             }

@@ -1,7 +1,6 @@
 #region "copyright"
 
 /*
-        string ImagingCameraId { get; set; }
     Copyright © 2016 - 2026 Stefan Berg <isbeorn86+NINA@googlemail.com> and the N.I.N.A. contributors
 
     This file is part of N.I.N.A. - Nighttime Imaging 'N' Astronomy.
@@ -18,6 +17,7 @@ using NINA.Core.Enum;
 namespace NINA.Profile.Interfaces {
 
     public interface IImageSettings : ISettings {
+        string ImagingCameraId { get; set; }
         bool AnnotateImage { get; set; }
         bool DebayerImage { get; set; }
         bool DebayeredHFR { get; set; }

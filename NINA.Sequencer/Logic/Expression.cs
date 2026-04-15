@@ -4,14 +4,13 @@ using NCalc.Handlers;
 using Newtonsoft.Json;
 using NINA.Core.Locale;
 using NINA.Core.Utility;
+using NINA.Sequencer.Container;
 using NINA.Sequencer.SequenceItem.Expressions;
 using System;
 using System.Collections.Generic;
-using System.Collections.Immutable;
 using System.Globalization;
+using System.Linq;
 using System.Text;
-using System.Text.RegularExpressions;
-using System.Threading;
 using System.Windows.Media;
 using static NINA.Sequencer.Logic.UserSymbol;
 
@@ -39,8 +38,9 @@ namespace NINA.Sequencer.Logic {
 
         public Expression (Expression cloneMe, ISequenceEntity context, Action<Expression> validator = null) {
             Definition = cloneMe.Definition;
-            SymbolBroker = cloneMe.SymbolBroker;
+            SymbolBroker = Logic.SymbolBroker.Instance;
             Symbol = cloneMe.Symbol;
+            Type = cloneMe.Type;
             Range = cloneMe.Range;
             Default = cloneMe.Default;
             AutoValue = cloneMe.AutoValue;
@@ -52,6 +52,7 @@ namespace NINA.Sequencer.Logic {
         public Expression(string definition, ISequenceEntity context) {
             Definition = definition;
             Context = context;
+            SymbolBroker = Logic.SymbolBroker.Instance;
         }
 
         public Expression(string definition, ISequenceEntity context, UserSymbol symbol) {
@@ -62,6 +63,7 @@ namespace NINA.Sequencer.Logic {
             Definition = definition;
             Context = context;
             Symbol = symbol;
+            SymbolBroker = Logic.SymbolBroker.Instance;
         }
 
         public ISequenceEntity Context { get; set; }
@@ -89,21 +91,26 @@ namespace NINA.Sequencer.Logic {
             }
         } = false;
 
-
         public string DefaultString {
             // First things first; this Property is only used if Definition is empty
             get {
-                // If Definition is Empty, use DefaultString field (localized or not)
+                // If this is a String Expression and Definition is empty, use empty string
+                // If Definition is otherwise Empty, use DefaultString field (localized or not)
                 // Otherwise, use the actual Default value
                 try {
-                    if ((Value == AutoValue || !IsValid) && !string.IsNullOrWhiteSpace(field)) {
+                    if (Type == "String" && string.IsNullOrWhiteSpace(Definition)) {
+                        return "";
+                    } else if ((Value == AutoValue || !IsValid) && !string.IsNullOrWhiteSpace(field)) {
                         if (field.StartsWith("Lbl")) {
                             return $"{Loc.Instance[field]}";
+                        } else if (field.StartsWith("{")) {
+                            // Don't add braces if already in {curly braces} format
+                            return field;
                         } else {
                             return "{" + field + "}";
                         }
                     } else {
-                        return Default.ToString(CultureInfo.InvariantCulture);
+                        return "{" + Default.ToString(CultureInfo.InvariantCulture) + "}";
                     }
                 } finally {
                 }
@@ -370,6 +377,10 @@ namespace NINA.Sequencer.Logic {
                 } else {
                     if ((Value == AutoValue) || (!double.IsNaN(Default) && Value == Default)) {
                         return DefaultString;
+                    } else if (Symbol is Variable v && !v.Executed) {
+                        return Loc.Instance["LblNotEvaluated"];
+                    } else if (double.IsNaN(Value)) {
+                        return "";
                     }
 
                     return Value.ToString(CultureInfo.InvariantCulture);
@@ -391,7 +402,14 @@ namespace NINA.Sequencer.Logic {
         }
 
         private void CheckRange(double value) {
-            if (Range?.Length < 3) { return; }
+            string rangeString = RangeString(value);
+            if (rangeString != null) {
+                Error = rangeString;
+            }
+        }
+
+        public string? RangeString(double? value) {
+            if (Range?.Length < 3) { return null; }
 
             int r = Convert.ToInt32(Range[2], CultureInfo.InvariantCulture);
 
@@ -402,10 +420,11 @@ namespace NINA.Sequencer.Logic {
             double max = Range[1] == 0 ? double.MaxValue : Range[1] - (((r & ExpressionRange.MAX_EXCLUSIVE) == ExpressionRange.MAX_EXCLUSIVE) ? 1e-8 : 0);
 
             bool outOfRange =
-                (minExclusive ? value <= min : value < min) ||
-                (maxExclusive ? value >= max : value > max);
+                (value == null) ? true :
+                ((minExclusive ? value <= min : value < min) ||
+                (maxExclusive ? value >= max : value > max));
 
-            if (!outOfRange) { return; }
+            if (!outOfRange) { return null; }
 
             string msgKey;
 
@@ -424,8 +443,7 @@ namespace NINA.Sequencer.Logic {
             } else {
                 msgKey = "Lbl_Expressions_CheckRange_RangeExclusiveExclusive";
             }
-
-            Error = string.Format(CultureInfo.InvariantCulture, Loc.Instance[msgKey], Range[0], Range[1]);
+            return string.Format(CultureInfo.InvariantCulture, Loc.Instance[msgKey], Range[0], Range[1]);
         }
         private void ExtensionFunction(string name, FunctionArgs args) {
             try {
@@ -437,7 +455,10 @@ namespace NINA.Sequencer.Logic {
                     GlobalVolatile = true;
                 }
             } catch (Exception ex) {
-                Logger.Error($"Error evaluating function {name}: {ex.Message}");
+                // Any renamed functions in Powerups 3 upgrades will generate log entries every 5 seconds, spamming the log
+                // These are very hard to recognize in the upgrader, as they may be buried inside complex Expressions
+                // The UI will mark these with a red triangle, i.e. the error isn't buried, it's just not logged over and over
+                LogOnce($"Error evaluating function {name}: {ex.Message}");
                 throw new NCalcEvaluationException(ex.Message);
             }
         }
@@ -579,8 +600,9 @@ namespace NINA.Sequencer.Logic {
                                 Error = sb.ToString();
                                 return;
                             }
-                        } else {
-                            Logger.Warning("SymbolBroker not found in " + Context.Name);
+                        } else if (Context != null && Context.Parent is not IImmutableContainer) {
+                           // This is fine if we're in a SmartExposure, TakeManyExposures, etc.
+                           Logger.Warning("SymbolBroker not found in " + Context.Name);
                         }
                     }
                 }
@@ -668,12 +690,19 @@ namespace NINA.Sequencer.Logic {
                     Error = Loc.Instance["LblSyntaxError"];
                     return;
                 } catch (Exception ex) {
-                    Error = Loc.Instance["LblError"] + ": " + ex.Message; // "Unknown Error; see log";
-                    Logger.Warning("Exception evaluating " + Definition + ": " + ex.Message);
+                    Error = Loc.Instance["LblError"] + ": " + ex.Message;
+                    Logger.Error("Exception evaluating " + Definition + ": " + ex.Message);
                 }
                 Dirty = false;
 
             }
+        }
+
+        private static HashSet<string> LoggedOnce = new HashSet<string>();
+        public static void LogOnce(string message) {
+            if (LoggedOnce.Contains(message)) return;
+            Logger.Warning(message);
+            LoggedOnce.Add(message);
         }
 
         public void ReferenceRemoved(UserSymbol sym) {
@@ -715,7 +744,7 @@ namespace NINA.Sequencer.Logic {
 
             return string.Create(
                 CultureInfo.InvariantCulture,
-                $"Expression: {Definition} in {id}, References: {References.Count}, Value: {ValueString}"
+                $"Expression: {Definition} in {id}, {string.Join(", ", Parameters.Select(a => a.Key + " = " + a.Value))}, Value: {ValueString}"
             );
         }
 

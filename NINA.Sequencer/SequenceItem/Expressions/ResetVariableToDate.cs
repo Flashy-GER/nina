@@ -49,6 +49,10 @@ namespace NINA.Sequencer.SequenceItem.Expressions {
         public ResetVariableToDate(ResetVariableToDate copyMe) : this(copyMe.DateTimeProviders, copyMe.SelectedProvider) {
             if (copyMe != null) {
                 CopyMetaData(copyMe);
+                Hours = copyMe.Hours;
+                Minutes = copyMe.Minutes;
+                Seconds = copyMe.Seconds;
+                MinutesOffset = copyMe.MinutesOffset;
             }
         }
 
@@ -248,7 +252,7 @@ namespace NINA.Sequencer.SequenceItem.Expressions {
             var i = new List<string>();
             if (Variable == null || Variable.Length == 0) {
                 i.Add("The variable must be specified");
-            } else if (Variable.Length > 0 && !Regex.IsMatch(Variable, UserSymbol.VALID_SYMBOL)) {
+            } else if (Variable.Length > 0 && !UserSymbol.ValidSymbolRegex.IsMatch(Variable)) {
                 i.Add("'" + Variable + "' is not a legal Variable name");
             } else {
                 UserSymbol sym = UserSymbol.FindSymbol(Variable, Parent);
@@ -259,10 +263,10 @@ namespace NINA.Sequencer.SequenceItem.Expressions {
                 }
             }
             if (HasFixedTimeProvider) {
-                //var referenceDate = NighttimeCalculator.GetReferenceDate(DateTime.Now);
-                //if (lastReferenceDate != referenceDate) {
+                var referenceDate = NighttimeCalculator.GetReferenceDate(DateTime.Now);
+                if (lastReferenceDate != referenceDate) {
                     UpdateTime();
-                //}
+                }
             } else {
                 DateTime today = System.DateTime.Today;
                 today = today.AddHours(Hours);

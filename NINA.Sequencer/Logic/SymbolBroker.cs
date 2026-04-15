@@ -110,6 +110,8 @@ namespace NINA.Sequencer.Logic {
         private IRotatorMediator _rotatorMediator;
         public static readonly char DELIMITER = '_';
 
+        public static SymbolBroker Instance { get; set; }
+
         public SymbolBroker(IProfileService profileService, ISwitchMediator switchMediator, IWeatherDataMediator weatherDataMediator, ICameraMediator cameraMediator, IDomeMediator domeMediator,
                                                                                             IFlatDeviceMediator flatMediator, IFilterWheelMediator filterWheelMediator, IRotatorMediator rotatorMediator, ISafetyMonitorMediator safetyMonitorMediator,
             IFocuserMediator focuserMediator, ITelescopeMediator telescopeMediator, IGuiderMediator guiderMediator, IImagingMediator imagingMediator) : base(profileService) {
@@ -127,6 +129,13 @@ namespace NINA.Sequencer.Logic {
             _imagingMediator = imagingMediator;
             _guiderMediator = guiderMediator;
 
+            // Register the default Providers
+            foreach (string provider in _symbolProviders) {
+                RegisterSymbolProvider(provider);
+            }
+            // Register the core functions
+            RegisterCoreFunctions();
+
             _imagingMediator.ImagePrepared += SetImageSymbols;
 
             _telescopeMediator.RegisterConsumer(this);
@@ -141,16 +150,13 @@ namespace NINA.Sequencer.Logic {
             _rotatorMediator.RegisterConsumer(this);
             _guiderMediator.RegisterConsumer(this);
 
-            // Register the default Providers
-            foreach (string provider in _symbolProviders) {
-                RegisterSymbolProvider(provider);
-            }
-            // Register the core functions
-            RegisterCoreFunctions();
-
+            AddOrUpdateSymbol("NINA", "LastExternalScriptExitCode", 0);
             UpdateNINASymbols();
             _conditionWatchdog = new ConditionWatchdog(UpdateNINASymbols, TimeSpan.FromSeconds(3));
             _conditionWatchdog.Start();
+
+            // This is a singleton, created once in CompositionRoot
+            Instance = this;
         }
 
         private void AddHiddenSymbol(string source, Symbol sym) {
@@ -169,15 +175,6 @@ namespace NINA.Sequencer.Logic {
                 }
             }
             return null;
-        }
-
-        private void AddOptionalImageSymbol(IStarDetectionAnalysis analysis, string name) {
-            if (analysis.HasProperty(name)) {
-                var v = analysis.GetType().GetProperty(name).GetValue(analysis, null);
-                if (v is double vDouble) {
-                    AddOrUpdateSymbol("Image", name, Math.Round(vDouble, 2));
-                }
-            }
         }
 
         private void AddOrUpdateSymbol(string source, string token, object value) {
@@ -452,16 +449,47 @@ namespace NINA.Sequencer.Logic {
         }
 
         // DATA SYMBOLS
-        public static string RemoveSpecialCharacters(string str) {
+        /// <summary>
+        /// Converts a string into a valid NCalc identifier by replacing illegal characters with underscores.
+        /// Valid identifiers must match: ^[a-zA-Z_][a-zA-Z0-9_]*$
+        /// </summary>
+        public static string SanitizeIdentifier(string str) {
             if (str == null) {
                 return "__Null__";
             }
+
+            if (str.Length == 0) {
+                return "__Empty__";
+            }
+
             StringBuilder sb = new StringBuilder();
-            foreach (char c in str) {
-                if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || c == '_') {
-                    sb.Append(c);
+
+            for (int i = 0; i < str.Length; i++) {
+                char c = str[i];
+
+                if (i == 0) {
+                    // First character must be a letter or underscore
+                    if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || c == '_') {
+                        sb.Append(c);
+                    } else if (c >= '0' && c <= '9') {
+                        // If it starts with a digit, prefix with underscore
+                        sb.Append('_');
+                        sb.Append(c);
+                    } else {
+                        // Replace illegal first character with underscore
+                        sb.Append('_');
+                    }
+                } else {
+                    // Subsequent characters can be letters, digits, or underscores
+                    if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || c == '_') {
+                        sb.Append(c);
+                    } else {
+                        // Replace illegal characters with underscore
+                        sb.Append('_');
+                    }
                 }
             }
+
             return sb.ToString();
         }
 
@@ -585,6 +613,8 @@ namespace NINA.Sequencer.Logic {
             }
 
             AddOrUpdateSymbol("Image", "HFR", Math.Round(analysis.HFR, 3));
+            AddOrUpdateSymbol("Image", "FWHM", Math.Round(analysis.FWHM, 3));
+            AddOrUpdateSymbol("Image", "Eccentricity", Math.Round(analysis.Eccentricity, 3));
             AddOrUpdateSymbol("Image", "StarCount", analysis.DetectedStars);
             AddOrUpdateSymbol("Image", "ImageId", imageMetaData.Image.Id);
             AddOrUpdateSymbol("Image", "ExposureTime", imageMetaData.Image.ExposureTime);
@@ -592,10 +622,6 @@ namespace NINA.Sequencer.Logic {
             AddOrUpdateSymbol("Image", "Gain", imageMetaData.Camera.Gain);
             AddOrUpdateSymbol("Image", "Offset", imageMetaData.Camera.Offset);
             AddOrUpdateSymbol("Image", "ImageType", imageMetaData.Image.ImageType);
-
-            // Add these if they exist (from Hocus Focus at this time)
-            AddOptionalImageSymbol(analysis, "Eccentricity");
-            AddOptionalImageSymbol(analysis, "FWHM");
         }
 
         public bool TryGetSymbol(string key, out Symbol symbol) {
@@ -652,11 +678,11 @@ namespace NINA.Sequencer.Logic {
             AddOrUpdateSymbol("Switch", "Connected", deviceInfo.Connected);
             if (deviceInfo.Connected) {
                 foreach (ISwitch sw in deviceInfo.ReadonlySwitches) {
-                    string key = RemoveSpecialCharacters(sw.Name);
+                    string key = SanitizeIdentifier(sw.Name);
                     AddOrUpdateSymbol("Gauge", key, sw.Value);
                 }
                 foreach (ISwitch sw in deviceInfo.WritableSwitches) {
-                    string key = RemoveSpecialCharacters(sw.Name);
+                    string key = SanitizeIdentifier(sw.Name);
                     AddOrUpdateSymbol("Switch", key, sw.Value);
                 }
             } else {
@@ -674,8 +700,8 @@ namespace NINA.Sequencer.Logic {
                         object val = info.GetValue(deviceInfo);
                         if (val is double t && !Double.IsNaN(t)) {
                             t = Math.Round(t, 2);
-                            string key = RemoveSpecialCharacters(dataName);
-                            AddOrUpdateSymbol("Weather", RemoveSpecialCharacters(dataName), t);
+                            string key = SanitizeIdentifier(dataName);
+                            AddOrUpdateSymbol("Weather", SanitizeIdentifier(dataName), t);
                         }
                     }
                 }
@@ -700,7 +726,7 @@ namespace NINA.Sequencer.Logic {
             if (deviceInfo.Connected) {
                 var f = _profileService.ActiveProfile.FilterWheelSettings.FilterWheelFilters;
                 foreach (FilterInfo filterInfo in f) {
-                    AddOrUpdateSymbol("Filter", RemoveSpecialCharacters(filterInfo.Name), filterInfo.Position);
+                    AddOrUpdateSymbol("Filter", SanitizeIdentifier(filterInfo.Name), filterInfo.Position);
                 }
 
                 if (deviceInfo.SelectedFilter != null) {
@@ -709,7 +735,7 @@ namespace NINA.Sequencer.Logic {
             } else {
                 var f = _profileService.ActiveProfile.FilterWheelSettings.FilterWheelFilters;
                 foreach (FilterInfo filterInfo in f) {
-                    RemoveSymbol("Filter", RemoveSpecialCharacters(filterInfo.Name));
+                    RemoveSymbol("Filter", SanitizeIdentifier(filterInfo.Name));
                 }
                 RemoveSymbol("FilterWheel", "CurrentFilterIndex");
             }

@@ -3336,6 +3336,12 @@ Drag the rectangle over the part of the frame you want to subsample and enable s
   <data name="LblTransitSouth" xml:space="preserve">
     <value>Transit South</value>
   </data>
+  <data name="LblNorth" xml:space="preserve">
+    <value>North</value>
+  </data>
+  <data name="LblSouth" xml:space="preserve">
+    <value>South</value>
+  </data>
   <data name="LblTransitTime" xml:space="preserve">
     <value>Transit time</value>
   </data>
@@ -6519,6 +6525,9 @@ This is evaluated AFTER the "Park mount before moving the shutter" setting.</val
   <data name="LblDewHeaterStrength" xml:space="preserve">
     <value>Target Dew Heater Strength</value>
   </data>
+  <data name="LblColoredContainerBorders" xml:space="preserve">
+    <value>Colored Container Borders</value>
+  </data>
   <data name="LblHardwareAcceleration" xml:space="preserve">
     <value>Hardware Acceleration</value>
   </data>
@@ -7876,5 +7885,8 @@ If exposure count is not important to you, enable this option to avoid having to
   </data>
   <data name="LblSequencerExpressionValues" xml:space="preserve">
     <value>Sequencer expressions values</value>
+  </data>
+  <data name="LblEccentricity" xml:space="preserve">
+    <value>Eccentricity</value>
   </data>
 </root>
